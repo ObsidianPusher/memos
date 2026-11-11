@@ -61,7 +61,7 @@ jobs:
           password: ${{ github.token }}
 
       # Frontend build.
-      - uses: pnpm/action-setup@v4.1.0
+      - uses: pnpm/action-setup@v6.1.1
         with:
           version: 10
       - uses: actions/setup-node@v4
