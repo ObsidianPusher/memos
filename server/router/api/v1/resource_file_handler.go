@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/labstack/echo/v4"
+	"google.golang.org/grpc/status"
 
 	"github.com/usememos/memos/internal/util"
 	storepb "github.com/usememos/memos/proto/gen/store"
@@ -27,21 +29,14 @@ func (s *APIV1Service) handleResourceFile(c echo.Context) error {
 		return c.NoContent(http.StatusNotFound)
 	}
 
-	// Check the related memo visibility.
-	if resource.MemoID != nil {
-		memo, err := s.Store.GetMemo(ctx, &store.FindMemo{ID: resource.MemoID})
+	if err := s.checkResourceAccess(ctx, resource, func() (*store.User, error) {
+		user, err := s.getCurrentUserFromRequest(ctx, c.Request())
 		if err != nil {
-			return c.NoContent(http.StatusInternalServerError)
+			return nil, nil
 		}
-		if memo != nil && memo.Visibility != store.Public {
-			user, err := s.getCurrentUserFromRequest(ctx, c.Request())
-			if err != nil || user == nil {
-				return c.NoContent(http.StatusUnauthorized)
-			}
-			if memo.Visibility == store.Private && user.ID != resource.CreatorID {
-				return c.NoContent(http.StatusUnauthorized)
-			}
-		}
+		return user, nil
+	}); err != nil {
+		return c.NoContent(runtime.HTTPStatusFromCode(status.Code(err)))
 	}
 
 	if c.QueryParam("thumbnail") == "true" && util.HasPrefixes(resource.Type, SupportedThumbnailMimeTypes...) {

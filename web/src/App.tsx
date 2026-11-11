@@ -29,28 +29,6 @@ const App = observer(() => {
   }, [isUserReady, isWorkspaceReady, navigateTo, workspaceProfile.owner]);
 
   useEffect(() => {
-    const darkMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleColorSchemeChange = (e: MediaQueryListEvent) => {
-      const mode = e.matches ? "dark" : "light";
-      setMode(mode);
-    };
-
-    try {
-      darkMediaQuery.addEventListener("change", handleColorSchemeChange);
-    } catch (error) {
-      console.error("failed to initial color scheme listener", error);
-    }
-
-    return () => {
-      try {
-        darkMediaQuery.removeEventListener("change", handleColorSchemeChange);
-      } catch (error) {
-        console.error("failed to cleanup color scheme listener", error);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (!workspaceGeneralSetting.additionalStyle) {
       return;
     }
@@ -107,21 +85,25 @@ const App = observer(() => {
   }, [workspaceStore.state.locale]);
 
   useEffect(() => {
-    let currentAppearance = workspaceStore.state.appearance as Appearance;
-    if (currentAppearance === "system") {
-      currentAppearance = getSystemColorScheme();
-    }
-    setMode(currentAppearance);
-  }, [workspaceStore.state.appearance]);
+    const appearance = workspaceStore.state.appearance;
+    const root = document.documentElement;
+    root.dataset.theme = appearance;
+    const applyMode = () =>
+      setMode(appearance === "system" ? getSystemColorScheme() : appearance === "dracula" ? "dark" : (appearance as "light" | "dark"));
+    applyMode();
+    if (appearance !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", applyMode);
+    return () => media.removeEventListener("change", applyMode);
+  }, [workspaceStore.state.appearance, setMode]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (mode === "light") {
-      root.classList.remove("dark");
-    } else if (mode === "dark") {
-      root.classList.add("dark");
-    }
+    document.documentElement.classList.toggle("dark", mode === "dark");
   }, [mode]);
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${workspaceStore.state.fontSize}px`;
+  }, [workspaceStore.state.fontSize]);
 
   useEffect(() => {
     if (!userSetting) {

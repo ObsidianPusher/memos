@@ -6,6 +6,8 @@ import { WorkspaceGeneralSetting, WorkspaceMemoRelatedSetting, WorkspaceSetting 
 import { isValidateLocale } from "@/utils/i18n";
 import { workspaceSettingNamePrefix } from "../common";
 
+export const fontSizes = [14, 16, 18, 20] as const;
+
 export enum WorkspaceSettingKey {
   /** BASIC - BASIC is the key for basic settings. */
   BASIC = "BASIC",
@@ -21,6 +23,7 @@ class LocalState {
   isInitialized = false;
   locale: string = "en";
   appearance: string = "system";
+  fontSize = 16;
   profile: WorkspaceProfile = WorkspaceProfile.fromPartial({});
   settings: WorkspaceSetting[] = [];
 
@@ -39,6 +42,12 @@ class LocalState {
   }
 
   constructor() {
+    try {
+      const stored = Number(localStorage.getItem("memos-font-size"));
+      if (fontSizes.some((size) => size === stored)) this.fontSize = stored;
+    } catch {
+      // Storage may be unavailable in private browsing.
+    }
     makeAutoObservable(this);
   }
 
@@ -50,7 +59,7 @@ class LocalState {
     if (!isValidateLocale(finalState.locale)) {
       finalState.locale = "en";
     }
-    if (!["system", "light", "dark"].includes(finalState.appearance)) {
+    if (!["system", "light", "dark", "dracula"].includes(finalState.appearance)) {
       finalState.appearance = "system";
     }
     Object.assign(this, finalState);
@@ -59,6 +68,16 @@ class LocalState {
 
 const workspaceStore = (() => {
   const state = new LocalState();
+
+  const setFontSize = (size: number) => {
+    if (!fontSizes.some((option) => option === size)) return;
+    state.setPartial({ fontSize: size });
+    try {
+      localStorage.setItem("memos-font-size", String(size));
+    } catch {
+      // Keep the current session usable when browser storage is unavailable.
+    }
+  };
 
   const fetchWorkspaceSetting = async (settingKey: WorkspaceSettingKey) => {
     const setting = await workspaceSettingServiceClient.getWorkspaceSetting({ name: `${workspaceSettingNamePrefix}${settingKey}` });
@@ -82,6 +101,7 @@ const workspaceStore = (() => {
 
   return {
     state,
+    setFontSize,
     fetchWorkspaceSetting,
     upsertWorkspaceSetting,
     getWorkspaceSettingByKey,

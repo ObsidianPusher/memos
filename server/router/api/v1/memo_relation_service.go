@@ -11,13 +11,24 @@ import (
 )
 
 func (s *APIV1Service) SetMemoRelations(ctx context.Context, request *v1pb.SetMemoRelationsRequest) (*emptypb.Empty, error) {
-	memoUID, err := ExtractMemoUIDFromName(request.Name)
+	err := s.Store.WithTransaction(ctx, func(stores *store.Store) error {
+		scoped := *s
+		scoped.Store = stores
+		return scoped.setMemoRelations(ctx, request)
+	})
 	if err != nil {
-		return nil, invalidArgErrf("invalid memo name: %v", err)
+		return nil, err
 	}
-	memo, err := s.Store.GetMemo(ctx, &store.FindMemo{UID: &memoUID})
+	return &emptypb.Empty{}, nil
+}
+
+func (s *APIV1Service) setMemoRelations(ctx context.Context, request *v1pb.SetMemoRelationsRequest) error {
+	if request == nil {
+		return invalidArgErrf("request is required")
+	}
+	memo, err := s.getOwnedMemo(ctx, request.Name)
 	if err != nil {
-		return nil, grpcErr(codes.Internal, "failed to get memo", err)
+		return err
 	}
 	referenceType := store.MemoRelationReference
 	// Delete all reference relations first.
@@ -25,10 +36,13 @@ func (s *APIV1Service) SetMemoRelations(ctx context.Context, request *v1pb.SetMe
 		MemoID: &memo.ID,
 		Type:   &referenceType,
 	}); err != nil {
-		return nil, grpcErr(codes.Internal, "failed to delete memo relation", err)
+		return grpcErr(codes.Internal, "failed to delete memo relation", err)
 	}
 
 	for _, relation := range request.Relations {
+		if relation == nil || relation.RelatedMemo == nil {
+			return invalidArgErrf("related memo is required")
+		}
 		// Ignore reflexive relations.
 		if request.Name == relation.RelatedMemo.Name {
 			continue
@@ -40,22 +54,28 @@ func (s *APIV1Service) SetMemoRelations(ctx context.Context, request *v1pb.SetMe
 		}
 		relatedMemoUID, err := ExtractMemoUIDFromName(relation.RelatedMemo.Name)
 		if err != nil {
-			return nil, invalidArgErrf("invalid related memo name: %v", err)
+			return invalidArgErrf("invalid related memo name: %v", err)
 		}
 		relatedMemo, err := s.Store.GetMemo(ctx, &store.FindMemo{UID: &relatedMemoUID})
 		if err != nil {
-			return nil, grpcErr(codes.Internal, "failed to get related memo", err)
+			return grpcErr(codes.Internal, "failed to get related memo", err)
+		}
+		if relatedMemo == nil {
+			return grpcErr(codes.NotFound, "related memo not found", nil)
+		}
+		if _, err := s.GetMemo(ctx, &v1pb.GetMemoRequest{Name: relation.RelatedMemo.Name}); err != nil {
+			return err
 		}
 		if _, err := s.Store.UpsertMemoRelation(ctx, &store.MemoRelation{
 			MemoID:        memo.ID,
 			RelatedMemoID: relatedMemo.ID,
 			Type:          convertMemoRelationTypeToStore(relation.Type),
 		}); err != nil {
-			return nil, grpcErr(codes.Internal, "failed to upsert memo relation", err)
+			return grpcErr(codes.Internal, "failed to upsert memo relation", err)
 		}
 	}
 
-	return &emptypb.Empty{}, nil
+	return nil
 }
 
 func (s *APIV1Service) ListMemoRelations(ctx context.Context, request *v1pb.ListMemoRelationsRequest) (*v1pb.ListMemoRelationsResponse, error) {
@@ -68,6 +88,9 @@ func (s *APIV1Service) ListMemoRelations(ctx context.Context, request *v1pb.List
 		return nil, grpcErr(codes.Internal, "failed to get memo", err)
 	}
 
+	if memo == nil {
+		return nil, grpcErr(codes.NotFound, "memo not found", nil)
+	}
 	currentUser, err := s.GetCurrentUser(ctx)
 	if err != nil {
 		return nil, grpcErr(codes.Internal, "failed to get user", err)

@@ -288,7 +288,8 @@
     "appearance-option": {
       "dark": "Always dark",
       "light": "Always light",
-      "system": "Follow system"
+      "system": "Follow system",
+      "dracula": "Dracula"
     },
     "member": "Member",
     "member-list": "Member list",
@@ -361,7 +362,8 @@
     "preference-section": {
       "default-memo-sort-option": "Memo display time",
       "default-memo-visibility": "Default memo visibility",
-      "theme": "Theme"
+      "theme": "Theme",
+      "font-size": "Font size (this browser)"
     },
     "sso": "SSO",
     "subscription-filter-section": {

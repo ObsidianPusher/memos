@@ -1,4 +1,10 @@
 /* eslint-disable no-undef */
+const colors = require("tailwindcss/colors");
+const themedColor = (name, hex) => {
+  const rgb = [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)).join(" ");
+  return `rgb(var(--memos-${name}, ${rgb}) / <alpha-value>)`;
+};
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
@@ -7,11 +13,17 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        ...Object.fromEntries(
+          ["gray", "zinc"].map((family) => [
+            family,
+            Object.fromEntries(Object.entries(colors[family]).map(([shade, hex]) => [shade, themedColor(`${family}-${shade}`, hex)])),
+          ]),
+        ),
         primary: {
-          DEFAULT: "#0d9488", // Teal 600
-          dark: "#0f766e", // Teal 700
-          darker: "#0d5a56", // Teal 800
-          lighter: "#14b8a6", // Teal 500
+          DEFAULT: themedColor("primary", "#0d9488"), // Teal 600
+          dark: themedColor("primary-dark", "#0f766e"), // Teal 700
+          darker: themedColor("primary-darker", "#0d5a56"), // Teal 800
+          lighter: themedColor("primary-lighter", "#14b8a6"), // Teal 500
         },
         success: {
           DEFAULT: "#16a34a", // Green 600

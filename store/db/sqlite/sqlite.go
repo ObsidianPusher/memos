@@ -16,7 +16,8 @@ import (
 )
 
 type DB struct {
-	db      *sql.DB
+	db      store.DBTX
+	pool    *sql.DB
 	profile *profile.Profile
 }
 
@@ -59,15 +60,18 @@ func NewDB(profile *profile.Profile) (store.Driver, error) {
 }
 
 func (d *DB) GetDB() *sql.DB {
-	return d.db
+	if d.pool != nil {
+		return d.pool
+	}
+	return d.db.(*sql.DB)
 }
 
 func (d *DB) Close() error {
-	return d.db.Close()
+	return d.GetDB().Close()
 }
 
 func (d *DB) EnsureColumns(ctx context.Context) error {
-	return ensureSQLiteMemoPayload(ctx, d.db)
+	return ensureSQLiteMemoPayload(ctx, d.GetDB())
 }
 
 func ensureSQLiteMemoPayload(ctx context.Context, db *sql.DB) error {
@@ -121,4 +125,12 @@ func ensureSQLiteMemoPayload(ctx context.Context, db *sql.DB) error {
 		return errors.Wrap(err, "failed to add payload column to memo table")
 	}
 	return nil
+}
+
+// WithTx returns a driver bound to tx without changing the shared driver.
+func (d *DB) WithTx(tx *sql.Tx) store.Driver {
+	scoped := *d
+	scoped.pool = d.GetDB()
+	scoped.db = tx
+	return &scoped
 }

@@ -11,7 +11,15 @@ import (
 
 // Driver is an interface for store driver.
 // It contains all methods that store database driver should implement.
+// DBTX is the query surface shared by a database pool and a transaction.
+type DBTX interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 type Driver interface {
+	WithTx(*sql.Tx) Driver
 	GetDB() *sql.DB
 	Close() error
 	EnsureColumns(ctx context.Context) error

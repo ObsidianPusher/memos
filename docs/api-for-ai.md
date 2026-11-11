@@ -249,6 +249,8 @@ Authorization: Bearer <access_token>
 - 资源上传与下载
 - 二进制文件访问
 
+下载权限：关联 `PUBLIC` memo 可匿名读取，`PROTECTED` 要求登录，`PRIVATE` 仅 memo 创建者可读。未绑定或父 memo 已不存在的资源仅上传者可读。未登录返回 401，已登录但无权返回 403；缩略图遵循相同规则。
+
 ### 5.7 MarkdownService
 
 - `POST /api/v1/markdown:parse`

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -161,6 +162,7 @@ func init() {
 	}
 
 	viper.SetEnvPrefix("memos")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	viper.AutomaticEnv()
 	if err := viper.BindEnv("instance-url", "MEMOS_INSTANCE_URL"); err != nil {
 		panic(err)
@@ -212,11 +214,19 @@ func initConfig() error {
 	if err := viper.ReadInConfig(); err != nil {
 		return err
 	}
-	defaultDataDir := filepath.Join(activeConfigDir, "data")
-	if viper.GetString("data") == "" {
-		viper.Set("data", defaultDataDir)
-		slog.Info("using default data directory", "path", defaultDataDir)
+	// Accept existing underscore YAML keys while keeping flag names canonical.
+	for legacy, canonical := range map[string]string{"unix_sock": "unix-sock", "instance_url": "instance-url"} {
+		if viper.InConfig(legacy) && !viper.InConfig(canonical) {
+			if err := viper.MergeConfigMap(map[string]any{canonical: viper.Get(legacy)}); err != nil {
+				return err
+			}
+		}
 	}
+	data := viper.GetString("data")
+	if data == "" {
+		data = "data"
+	}
+	viper.Set("data", resolveConfigPath(data))
 	return nil
 }
 

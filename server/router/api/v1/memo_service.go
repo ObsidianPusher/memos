@@ -25,6 +25,24 @@ import (
 )
 
 func (s *APIV1Service) CreateMemo(ctx context.Context, request *v1pb.CreateMemoRequest) (*v1pb.Memo, error) {
+	var memo *v1pb.Memo
+	err := s.Store.WithTransaction(ctx, func(stores *store.Store) error {
+		scoped := *s
+		scoped.Store = stores
+		var err error
+		memo, err = scoped.createMemo(ctx, request)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.DispatchMemoCreatedWebhook(ctx, memo); err != nil {
+		slog.Warn("Failed to dispatch memo webhook", slog.Any("err", err))
+	}
+	return memo, nil
+}
+
+func (s *APIV1Service) createMemo(ctx context.Context, request *v1pb.CreateMemoRequest) (*v1pb.Memo, error) {
 	if request == nil || request.Memo == nil {
 		return nil, invalidArgErrf("memo is required")
 	}
@@ -70,7 +88,7 @@ func (s *APIV1Service) CreateMemo(ctx context.Context, request *v1pb.CreateMemoR
 			Resources: request.Memo.Resources,
 		})
 		if err != nil {
-			return nil, grpcErr(codes.Internal, "failed to set memo resources", err)
+			return nil, err
 		}
 	}
 	if len(request.Memo.Relations) > 0 {
@@ -79,17 +97,13 @@ func (s *APIV1Service) CreateMemo(ctx context.Context, request *v1pb.CreateMemoR
 			Relations: request.Memo.Relations,
 		})
 		if err != nil {
-			return nil, grpcErr(codes.Internal, "failed to set memo relations", err)
+			return nil, err
 		}
 	}
 
 	memoMessage, err := s.convertMemoFromStore(ctx, memo)
 	if err != nil {
 		return nil, grpcErr(codes.Internal, "failed to convert memo", err)
-	}
-	// Try to dispatch webhook when memo is created.
-	if err := s.DispatchMemoCreatedWebhook(ctx, memoMessage); err != nil {
-		slog.Warn("Failed to dispatch memo created webhook", slog.Any("err", err))
 	}
 
 	return memoMessage, nil
@@ -243,6 +257,24 @@ func (s *APIV1Service) GetMemo(ctx context.Context, request *v1pb.GetMemoRequest
 }
 
 func (s *APIV1Service) UpdateMemo(ctx context.Context, request *v1pb.UpdateMemoRequest) (*v1pb.Memo, error) {
+	var memo *v1pb.Memo
+	err := s.Store.WithTransaction(ctx, func(stores *store.Store) error {
+		scoped := *s
+		scoped.Store = stores
+		var err error
+		memo, err = scoped.updateMemo(ctx, request)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.DispatchMemoUpdatedWebhook(ctx, memo); err != nil {
+		slog.Warn("Failed to dispatch memo webhook", slog.Any("err", err))
+	}
+	return memo, nil
+}
+
+func (s *APIV1Service) updateMemo(ctx context.Context, request *v1pb.UpdateMemoRequest) (*v1pb.Memo, error) {
 	if request == nil || request.Memo == nil {
 		return nil, invalidArgErrf("memo is required")
 	}
@@ -336,7 +368,7 @@ func (s *APIV1Service) UpdateMemo(ctx context.Context, request *v1pb.UpdateMemoR
 				Resources: request.Memo.Resources,
 			})
 			if err != nil {
-				return nil, grpcErr(codes.Internal, "failed to set memo resources", err)
+				return nil, err
 			}
 		} else if path == "relations" {
 			_, err := s.SetMemoRelations(ctx, &v1pb.SetMemoRelationsRequest{
@@ -344,7 +376,7 @@ func (s *APIV1Service) UpdateMemo(ctx context.Context, request *v1pb.UpdateMemoR
 				Relations: request.Memo.Relations,
 			})
 			if err != nil {
-				return nil, grpcErr(codes.Internal, "failed to set memo relations", err)
+				return nil, err
 			}
 		}
 	}
@@ -362,10 +394,6 @@ func (s *APIV1Service) UpdateMemo(ctx context.Context, request *v1pb.UpdateMemoR
 	memoMessage, err := s.convertMemoFromStore(ctx, memo)
 	if err != nil {
 		return nil, grpcErr(codes.Internal, "failed to convert memo", err)
-	}
-	// Try to dispatch webhook when memo is updated.
-	if err := s.DispatchMemoUpdatedWebhook(ctx, memoMessage); err != nil {
-		slog.Warn("Failed to dispatch memo updated webhook", slog.Any("err", err))
 	}
 
 	return memoMessage, nil
@@ -447,6 +475,24 @@ func (s *APIV1Service) DeleteMemo(ctx context.Context, request *v1pb.DeleteMemoR
 }
 
 func (s *APIV1Service) CreateMemoComment(ctx context.Context, request *v1pb.CreateMemoCommentRequest) (*v1pb.Memo, error) {
+	var memo *v1pb.Memo
+	err := s.Store.WithTransaction(ctx, func(stores *store.Store) error {
+		scoped := *s
+		scoped.Store = stores
+		var err error
+		memo, err = scoped.createMemoComment(ctx, request)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.DispatchMemoCreatedWebhook(ctx, memo); err != nil {
+		slog.Warn("Failed to dispatch memo webhook", slog.Any("err", err))
+	}
+	return memo, nil
+}
+
+func (s *APIV1Service) createMemoComment(ctx context.Context, request *v1pb.CreateMemoCommentRequest) (*v1pb.Memo, error) {
 	if request == nil || request.Comment == nil {
 		return nil, invalidArgErrf("comment is required")
 	}
@@ -462,8 +508,12 @@ func (s *APIV1Service) CreateMemoComment(ctx context.Context, request *v1pb.Crea
 		return nil, grpcErr(codes.NotFound, "memo not found", nil)
 	}
 
-	// Create the memo comment first.
-	memoComment, err := s.CreateMemo(ctx, &v1pb.CreateMemoRequest{Memo: request.Comment})
+	// Check parent visibility before creating any comment data.
+	if _, err := s.GetMemo(ctx, &v1pb.GetMemoRequest{Name: request.Name}); err != nil {
+		return nil, err
+	}
+	// Create the memo comment in the same transaction as its relation and inbox.
+	memoComment, err := s.createMemo(ctx, &v1pb.CreateMemoRequest{Memo: request.Comment})
 	if err != nil {
 		return nil, grpcErr(codes.Internal, "failed to create memo", err)
 	}

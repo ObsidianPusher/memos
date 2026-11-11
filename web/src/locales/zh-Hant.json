@@ -245,7 +245,8 @@
     "appearance-option": {
       "dark": "總是深色",
       "light": "總是淺色",
-      "system": "跟隨系統"
+      "system": "跟隨系統",
+      "dracula": "Dracula"
     },
     "member": "使用者",
     "member-list": "使用者列表",
@@ -270,7 +271,8 @@
     "preference-section": {
       "default-memo-sort-option": "Memo 顯示時間",
       "default-memo-visibility": "Memo 預設之能見度",
-      "theme": "主題"
+      "theme": "主題",
+      "font-size": "字體大小（目前瀏覽器）"
     },
     "sso": "SSO",
     "sso-section": {

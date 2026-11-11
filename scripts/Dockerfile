@@ -27,5 +27,6 @@ VOLUME /var/opt/memos
 
 ENV MEMOS_MODE="prod"
 ENV MEMOS_PORT="5230"
+ENV MEMOS_DATA="/var/opt/memos"
 
 ENTRYPOINT ["./entrypoint.sh", "./memos"]

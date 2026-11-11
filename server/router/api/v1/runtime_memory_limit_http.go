@@ -3,7 +3,7 @@ package v1
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
+	"math"
 	"net/http"
 	"runtime/debug"
 
@@ -75,17 +75,12 @@ func (s *APIV1Service) upsertRuntimeMemoryLimit(c echo.Context) error {
 
 	memoryLimitBytes := int64(-1)
 	if request.Enabled {
-		if request.MemoryLimitMb <= 0 {
+		if request.MemoryLimitMb < minMemoryLimitBytes/MebiByte || request.MemoryLimitMb > maxMemoryLimitBytes/MebiByte {
 			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "memory_limit_mb must be greater than 0 when enabled",
+				"error": fmt.Sprintf("memory limit must be between %dMB and %dMB", minMemoryLimitBytes/MebiByte, maxMemoryLimitBytes/MebiByte),
 			})
 		}
 		memoryLimitBytes = request.MemoryLimitMb * 1024 * 1024
-		if memoryLimitBytes < minMemoryLimitBytes || memoryLimitBytes > maxMemoryLimitBytes {
-			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": fmt.Sprintf("memory limit must be between %dMB and %dMB", minMemoryLimitBytes/(1024*1024), maxMemoryLimitBytes/(1024*1024)),
-			})
-		}
 	}
 
 	cfg, err := s.runtimeConfigStore.Upsert(memoryLimitBytes)
@@ -95,10 +90,7 @@ func (s *APIV1Service) upsertRuntimeMemoryLimit(c echo.Context) error {
 		})
 	}
 
-	appliedLimit := s.applyMemoryLimit(cfg.MemoryLimitBytes)
-	if appliedLimit != cfg.MemoryLimitBytes {
-		slog.Warn("runtime memory limit normalized by runtime", "requested", cfg.MemoryLimitBytes, "applied", appliedLimit)
-	}
+	s.applyMemoryLimit(cfg.MemoryLimitBytes)
 	return c.JSON(http.StatusOK, convertRuntimeMemoryLimitResponse(cfg))
 }
 
@@ -125,7 +117,8 @@ func convertRuntimeMemoryLimitResponse(cfg *RuntimeConfig) *runtimeMemoryLimitRe
 
 func (s *APIV1Service) applyMemoryLimit(memoryLimitBytes int64) int64 {
 	if memoryLimitBytes <= 0 {
-		return debug.SetMemoryLimit(-1)
+		memoryLimitBytes = math.MaxInt64
 	}
-	return debug.SetMemoryLimit(memoryLimitBytes)
+	debug.SetMemoryLimit(memoryLimitBytes)
+	return memoryLimitBytes
 }

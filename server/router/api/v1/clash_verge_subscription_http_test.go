@@ -3,6 +3,9 @@ package v1
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -91,5 +94,52 @@ func TestContentSubscriptionForcesStaticUpdatePolicy(t *testing.T) {
 func TestClashSubscriptionPermissionErrorUsesSentinel(t *testing.T) {
 	if !errors.Is(errClashSubscriptionPermissionDenied, errClashSubscriptionPermissionDenied) {
 		t.Fatal("expected sentinel error to match itself")
+	}
+}
+
+func TestFetchSubscriptionRejectsPrivateTargetBeforeSending(t *testing.T) {
+	hits := 0
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hits++; _, _ = w.Write([]byte("private data")) }))
+	defer target.Close()
+	_, err := fetchSubscriptionContent(context.Background(), target.URL)
+	if err == nil {
+		t.Error("private subscription target was accepted")
+	}
+	if hits != 0 {
+		t.Errorf("private server received %d requests", hits)
+	}
+}
+
+func TestSubscriptionClientRejectsPrivateRedirect(t *testing.T) {
+	client := newSubscriptionHTTPClient()
+	defer client.CloseIdleConnections()
+	for _, target := range []string{"http://127.0.0.1/private", "http://[::1]/private", "file:///etc/passwd", "http://localhost/private"} {
+		request, err := http.NewRequest(http.MethodGet, target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := client.CheckRedirect(request, nil); err == nil {
+			t.Errorf("redirect to %s accepted", target)
+		}
+	}
+}
+
+func TestSubscriptionClientRejectsPrivateConnection(t *testing.T) {
+	client := newSubscriptionHTTPClient()
+	defer client.CloseIdleConnections()
+	transport := client.Transport.(*http.Transport)
+	if conn, err := transport.DialContext(context.Background(), "tcp", "127.0.0.1:80"); err == nil {
+		conn.Close()
+		t.Fatal("private connection accepted")
+	}
+}
+
+func TestSubscriptionRejectsNonPublicAddresses(t *testing.T) {
+	for _, host := range []string{"0.0.0.0", "::", "224.0.0.1", "ff02::1", "100.64.0.1", "198.18.0.1", "::ffff:127.0.0.1"} {
+		t.Run(host, func(t *testing.T) {
+			if !isPrivateIP(net.ParseIP(host)) {
+				t.Fatalf("non-public address %s allowed", host)
+			}
+		})
 	}
 }

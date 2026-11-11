@@ -1,1 +1,1 @@
-type Appearance = "system" | "light" | "dark";
+type Appearance = "system" | "light" | "dark" | "dracula";

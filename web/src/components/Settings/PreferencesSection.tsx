@@ -1,6 +1,7 @@
 import { Divider, Option, Select } from "@mui/joy";
 import { observer } from "mobx-react-lite";
-import { userStore } from "@/store/v2";
+import { userStore, workspaceStore } from "@/store/v2";
+import { fontSizes } from "@/store/v2/workspace";
 import { Visibility } from "@/types/proto/api/v1/memo_service";
 import { UserSetting } from "@/types/proto/api/v1/user_service";
 import { useTranslate } from "@/utils/i18n";
@@ -38,6 +39,24 @@ const PreferencesSection = observer(() => {
       <div className="w-full flex flex-row justify-between items-center">
         <span>{t("setting.preference-section.theme")}</span>
         <AppearanceSelect value={setting.appearance as Appearance} onChange={handleAppearanceSelectChange} />
+      </div>
+
+      <div className="w-full flex flex-row justify-between items-center">
+        <label id="font-size-label">{t("setting.preference-section.font-size")}</label>
+        <Select
+          aria-labelledby="font-size-label"
+          className="!min-w-[10rem]"
+          value={workspaceStore.state.fontSize}
+          onChange={(_, size) => {
+            if (size !== null) workspaceStore.setFontSize(size);
+          }}
+        >
+          {fontSizes.map((size) => (
+            <Option key={size} value={size}>
+              {size}px
+            </Option>
+          ))}
+        </Select>
       </div>
 
       <p className="font-medium text-gray-700 dark:text-gray-500">{t("setting.preference")}</p>

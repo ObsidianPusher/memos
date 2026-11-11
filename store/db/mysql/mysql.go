@@ -14,7 +14,8 @@ import (
 )
 
 type DB struct {
-	db      *sql.DB
+	db      store.DBTX
+	pool    *sql.DB
 	profile *profile.Profile
 	config  *mysql.Config
 }
@@ -38,9 +39,9 @@ func NewDB(profile *profile.Profile) (store.Driver, error) {
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "failed to open db: %s", profile.DSN)
 	}
-	dbutil.ApplySQLConnectionSettings(driver.db, "mysql")
-	if err := dbutil.Ping(context.Background(), driver.db); err != nil {
-		_ = driver.db.Close()
+	dbutil.ApplySQLConnectionSettings(driver.GetDB(), "mysql")
+	if err := dbutil.Ping(context.Background(), driver.GetDB()); err != nil {
+		_ = driver.GetDB().Close()
 		return nil, pkgerrors.Wrap(err, "failed to ping mysql")
 	}
 
@@ -48,15 +49,18 @@ func NewDB(profile *profile.Profile) (store.Driver, error) {
 }
 
 func (d *DB) GetDB() *sql.DB {
-	return d.db
+	if d.pool != nil {
+		return d.pool
+	}
+	return d.db.(*sql.DB)
 }
 
 func (d *DB) Close() error {
-	return d.db.Close()
+	return d.GetDB().Close()
 }
 
 func (d *DB) EnsureColumns(ctx context.Context) error {
-	return ensureMySQLMemoPayload(ctx, d.db)
+	return ensureMySQLMemoPayload(ctx, d.GetDB())
 }
 
 func ensureMySQLMemoPayload(ctx context.Context, db *sql.DB) error {
@@ -96,4 +100,12 @@ func mergeDSN(baseDSN string) (string, error) {
 
 	config.MultiStatements = true
 	return config.FormatDSN(), nil
+}
+
+// WithTx returns a driver bound to tx without changing the shared driver.
+func (d *DB) WithTx(tx *sql.Tx) store.Driver {
+	scoped := *d
+	scoped.pool = d.GetDB()
+	scoped.db = tx
+	return &scoped
 }

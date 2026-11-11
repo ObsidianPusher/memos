@@ -30,6 +30,9 @@ const (
 
 var (
 	privateCIDRs = mustParseCIDRs(
+		"0.0.0.0/8",
+		"100.64.0.0/10",
+		"198.18.0.0/15",
 		"127.0.0.0/8",
 		"10.0.0.0/8",
 		"172.16.0.0/12",
@@ -630,6 +633,9 @@ func validateSubscriptionSourceURL(ctx context.Context, rawURL string) (*url.URL
 }
 
 func fetchSubscriptionContent(ctx context.Context, sourceURL string) ([]byte, error) {
+	if _, err := validateSubscriptionSourceURL(ctx, sourceURL); err != nil {
+		return nil, err
+	}
 	requestCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
@@ -638,9 +644,8 @@ func fetchSubscriptionContent(ctx context.Context, sourceURL string) ([]byte, er
 		return nil, fmt.Errorf("failed to build request: %w", err)
 	}
 	request.Header.Set("User-Agent", "memos-clash-verge-filter/1.0")
-	client := &http.Client{
-		Timeout: 20 * time.Second,
-	}
+	client := newSubscriptionHTTPClient()
+	defer client.CloseIdleConnections()
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch source subscription: %w", err)
@@ -796,6 +801,9 @@ func mustParseCIDRs(cidrs ...string) []*net.IPNet {
 }
 
 func isPrivateIP(ip net.IP) bool {
+	if !ip.IsGlobalUnicast() {
+		return true
+	}
 	for _, cidr := range privateCIDRs {
 		if cidr.Contains(ip) {
 			return true

@@ -10,7 +10,6 @@ import router from "./router";
 import { initialUserStore } from "./store/v2/user";
 import { initialWorkspaceStore } from "./store/v2/workspace";
 import theme from "./theme";
-import "@usememos/mui/dist/index.css";
 
 const Main = observer(() => (
   <CssVarsProvider theme={theme}>

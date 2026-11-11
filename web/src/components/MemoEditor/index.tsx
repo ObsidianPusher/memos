@@ -274,28 +274,29 @@ const MemoEditor = observer((props: Props) => {
       // Update memo.
       if (memoName) {
         const prevMemo = await memoStore.getOrFetchMemoByName(memoName);
-        if (prevMemo) {
-          const { memoPatch, updateMask } = buildMemoUpdate({
-            prevMemo,
-            content,
-            memoVisibility: state.memoVisibility,
-            emotion: state.emotion,
-            resourceList: state.resourceList,
-            relationList: state.relationList,
-            createTime,
-            updateTime,
-          });
-          if (updateMask.length === 0) {
-            toast.error("No changes detected");
-            if (onCancel) {
-              onCancel();
-            }
-            return;
+        if (!prevMemo) {
+          throw new Error("Memo not found");
+        }
+        const { memoPatch, updateMask } = buildMemoUpdate({
+          prevMemo,
+          content,
+          memoVisibility: state.memoVisibility,
+          emotion: state.emotion,
+          resourceList: state.resourceList,
+          relationList: state.relationList,
+          createTime,
+          updateTime,
+        });
+        if (updateMask.length === 0) {
+          toast.error("No changes detected");
+          if (onCancel) {
+            onCancel();
           }
-          const memo = await memoStore.updateMemo(memoPatch, updateMask);
-          if (onConfirm) {
-            onConfirm(memo.name);
-          }
+          return;
+        }
+        const memo = await memoStore.updateMemo(memoPatch, updateMask);
+        if (onConfirm) {
+          onConfirm(memo.name);
         }
       } else {
         // Create memo or memo comment.
@@ -327,17 +328,17 @@ const MemoEditor = observer((props: Props) => {
         }
       }
       editorRef.current?.setContent("");
+      localStorage.removeItem(contentCacheKey);
+      patchEditorState({
+        ...createInitialMemoEditorState(),
+        memoVisibility: state.memoVisibility,
+      });
     } catch (error: any) {
       console.error(error);
       toast.error(getErrorMessage(error));
+    } finally {
+      patchEditorState({ isRequesting: false });
     }
-
-    localStorage.removeItem(contentCacheKey);
-    patchEditorState({
-      ...createInitialMemoEditorState(),
-      memoVisibility: state.memoVisibility,
-      isRequesting: false,
-    });
   };
 
   const handleCancelBtnClick = () => {

@@ -117,6 +117,20 @@ func (s *Store) DeleteResource(ctx context.Context, delete *DeleteResource) erro
 		return errors.New("resource not found")
 	}
 
+	if s.inTransaction {
+		if err := s.driver.DeleteResource(ctx, delete); err != nil {
+			return err
+		}
+		s.afterCommit = append(s.afterCommit, func(stores *Store) error { return stores.deleteResourceFile(context.WithoutCancel(ctx), resource) })
+		return nil
+	}
+	if err := s.deleteResourceFile(ctx, resource); err != nil {
+		return err
+	}
+	return s.driver.DeleteResource(ctx, delete)
+}
+
+func (s *Store) deleteResourceFile(ctx context.Context, resource *Resource) error {
 	if resource.StorageType == storepb.ResourceStorageType_LOCAL {
 		if err := func() error {
 			p := filepath.FromSlash(resource.Reference)
@@ -162,5 +176,5 @@ func (s *Store) DeleteResource(ctx context.Context, delete *DeleteResource) erro
 		}
 	}
 
-	return s.driver.DeleteResource(ctx, delete)
+	return nil
 }

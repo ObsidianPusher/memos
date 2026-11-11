@@ -1,3 +1,4 @@
+@import "@usememos/mui/dist/index.css";
 @import url("highlight.js/styles/github.css") (prefers-color-scheme: light);
 @import url("highlight.js/styles/github-dark.css") (prefers-color-scheme: dark);
 
@@ -56,4 +57,60 @@ html.dark {
 }
 html.light {
   color-scheme: light;
+}
+
+/* Dracula Classic palette: https://draculatheme.com/spec */
+html[data-theme="dracula"] {
+  --memos-zinc-50: 248 248 242;
+  --memos-zinc-100: 248 248 242;
+  --memos-zinc-200: 230 230 230;
+  --memos-zinc-300: 221 221 226;
+  --memos-zinc-400: 194 195 208;
+  --memos-zinc-500: 156 163 194;
+  --memos-zinc-600: 98 114 164;
+  --memos-zinc-700: 68 71 90;
+  --memos-zinc-800: 40 42 54;
+  --memos-zinc-900: 33 34 44;
+  --memos-zinc-950: 25 26 33;
+  --memos-gray-50: var(--memos-zinc-50);
+  --memos-gray-100: var(--memos-zinc-100);
+  --memos-gray-200: var(--memos-zinc-200);
+  --memos-gray-300: var(--memos-zinc-300);
+  --memos-gray-400: var(--memos-zinc-400);
+  --memos-gray-500: var(--memos-zinc-500);
+  --memos-gray-600: var(--memos-zinc-600);
+  --memos-gray-700: var(--memos-zinc-700);
+  --memos-gray-800: var(--memos-zinc-800);
+  --memos-gray-900: var(--memos-zinc-900);
+  --memos-gray-950: var(--memos-zinc-950);
+  --memos-primary: 189 147 249;
+  --memos-primary-dark: 167 120 230;
+  --memos-primary-darker: 129 92 214;
+  --memos-primary-lighter: 214 172 255;
+
+  --joy-palette-background-body: #21222c;
+  --joy-palette-background-surface: #282a36;
+  --joy-palette-background-popup: #343746;
+  --joy-palette-background-level1: #343746;
+  --joy-palette-background-level2: #44475a;
+  --joy-palette-background-level3: #6272a4;
+  --joy-palette-text-primary: #f8f8f2;
+  --joy-palette-text-secondary: #c2c3d0;
+  --joy-palette-text-tertiary: #9ca3c2;
+  --joy-palette-divider: #44475a;
+  --joy-palette-neutral-outlinedBorder: #44475a;
+  --joy-palette-neutral-outlinedHoverBg: #44475a;
+  --joy-palette-neutral-plainHoverBg: #44475a;
+  --joy-palette-primary-400: #d6acff;
+  --joy-palette-primary-500: #bd93f9;
+  --joy-palette-primary-600: #a778e6;
+  --joy-palette-primary-solidBg: #815cd6;
+  --joy-palette-primary-solidHoverBg: #a778e6;
+  --joy-palette-primary-outlinedColor: #bd93f9;
+  --joy-palette-primary-plainColor: #bd93f9;
+}
+
+html[data-theme="dracula"] ::selection {
+  background: #44475a;
+  color: #f8f8f2;
 }

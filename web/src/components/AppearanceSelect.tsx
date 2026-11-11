@@ -9,7 +9,7 @@ interface Props {
   className?: string;
 }
 
-const appearanceList = ["system", "light", "dark"] as const;
+const appearanceList = ["system", "light", "dark", "dracula"] as const;
 
 const AppearanceSelect: FC<Props> = (props: Props) => {
   const { onChange, value, className } = props;
@@ -19,7 +19,7 @@ const AppearanceSelect: FC<Props> = (props: Props) => {
     const className = "w-4 h-auto";
     if (appearance === "light") {
       return <SunIcon className={className} />;
-    } else if (appearance === "dark") {
+    } else if (appearance === "dark" || appearance === "dracula") {
       return <MoonIcon className={className} />;
     } else {
       return <SmileIcon className={className} />;

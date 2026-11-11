@@ -276,7 +276,8 @@
     "appearance-option": {
       "dark": "总是深色",
       "light": "总是浅色",
-      "system": "跟随系统"
+      "system": "跟随系统",
+      "dracula": "Dracula"
     },
     "member": "成员",
     "member-list": "成员列表",
@@ -349,7 +350,8 @@
     "preference-section": {
       "default-memo-sort-option": "备忘录显示时间",
       "default-memo-visibility": "默认备忘录可见性",
-      "theme": "主题"
+      "theme": "主题",
+      "font-size": "字体大小（当前浏览器）"
     },
     "sso": "单点登录",
     "subscription-filter-section": {

@@ -15,7 +15,8 @@ import (
 )
 
 type DB struct {
-	db      *sql.DB
+	db      store.DBTX
+	pool    *sql.DB
 	profile *profile.Profile
 	// Add any other fields as needed
 }
@@ -46,15 +47,18 @@ func NewDB(profile *profile.Profile) (store.Driver, error) {
 }
 
 func (d *DB) GetDB() *sql.DB {
-	return d.db
+	if d.pool != nil {
+		return d.pool
+	}
+	return d.db.(*sql.DB)
 }
 
 func (d *DB) Close() error {
-	return d.db.Close()
+	return d.GetDB().Close()
 }
 
 func (d *DB) EnsureColumns(ctx context.Context) error {
-	return ensurePostgresMemoPayload(ctx, d.db)
+	return ensurePostgresMemoPayload(ctx, d.GetDB())
 }
 
 func ensurePostgresMemoPayload(ctx context.Context, db *sql.DB) error {
@@ -89,4 +93,12 @@ LIMIT 1;
 		return pkgerrors.Wrap(err, "failed to add payload column to memo table")
 	}
 	return nil
+}
+
+// WithTx returns a driver bound to tx without changing the shared driver.
+func (d *DB) WithTx(tx *sql.Tx) store.Driver {
+	scoped := *d
+	scoped.pool = d.GetDB()
+	scoped.db = tx
+	return &scoped
 }

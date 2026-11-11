@@ -153,26 +153,8 @@ func (s *APIV1Service) GetResourceBinary(ctx context.Context, request *v1pb.GetR
 	if resource == nil {
 		return nil, grpcErr(codes.NotFound, "resource not found", nil)
 	}
-	// Check the related memo visibility.
-	if resource.MemoID != nil {
-		memo, err := s.Store.GetMemo(ctx, &store.FindMemo{
-			ID: resource.MemoID,
-		})
-		if err != nil {
-			return nil, grpcErr(codes.Internal, "failed to find memo by ID", err)
-		}
-		if memo != nil && memo.Visibility != store.Public {
-			user, err := s.GetCurrentUser(ctx)
-			if err != nil {
-				return nil, grpcErr(codes.Internal, "failed to get current user", err)
-			}
-			if user == nil {
-				return nil, grpcErr(codes.Unauthenticated, "unauthorized access", nil)
-			}
-			if memo.Visibility == store.Private && user.ID != resource.CreatorID {
-				return nil, grpcErr(codes.Unauthenticated, "unauthorized access", nil)
-			}
-		}
+	if err := s.checkResourceAccess(ctx, resource, func() (*store.User, error) { return s.GetCurrentUser(ctx) }); err != nil {
+		return nil, err
 	}
 
 	if request.Thumbnail && util.HasPrefixes(resource.Type, SupportedThumbnailMimeTypes...) {
@@ -515,4 +497,34 @@ func replaceFilenameWithPathTemplate(path, filename string) string {
 		return s
 	})
 	return path
+}
+
+// Unbound and orphan uploads remain private to their uploader.
+func (s *APIV1Service) checkResourceAccess(ctx context.Context, resource *store.Resource, getUser func() (*store.User, error)) error {
+	ownerID := resource.CreatorID
+	visibility := store.Private
+	if resource.MemoID != nil {
+		memo, err := s.Store.GetMemo(ctx, &store.FindMemo{ID: resource.MemoID})
+		if err != nil {
+			return grpcErr(codes.Internal, "failed to get memo", err)
+		}
+		if memo != nil {
+			visibility = memo.Visibility
+			ownerID = memo.CreatorID
+		}
+	}
+	if visibility == store.Public {
+		return nil
+	}
+	user, err := getUser()
+	if err != nil {
+		return grpcErr(codes.Internal, "failed to get current user", err)
+	}
+	if user == nil {
+		return grpcErr(codes.Unauthenticated, "authentication required", nil)
+	}
+	if visibility != store.Protected && user.ID != ownerID {
+		return grpcErr(codes.PermissionDenied, "permission denied", nil)
+	}
+	return nil
 }
