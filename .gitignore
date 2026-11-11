@@ -1,0 +1,32 @@
+# temp folder
+tmp
+
+# Frontend asset
+web/dist
+
+# build folder
+build
+
+.DS_Store
+
+# Jetbrains
+.idea
+
+# Docker Compose Environment File
+.env
+
+dist
+
+# VSCode settings
+.vscode
+
+# Local package manager cache
+.cache
+.corepack
+.corepack-cache
+web/node_modules
+
+# Local executable, agent configuration, and subscription scratch files
+/main
+/.serena/
+/tmp_clash_subscription*.yaml
