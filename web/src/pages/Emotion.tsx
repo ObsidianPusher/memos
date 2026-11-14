@@ -10,10 +10,10 @@ import { cn } from "@/utils";
 import { EMOTION_META } from "@/utils/emotion";
 import { useTranslate } from "@/utils/i18n";
 
-type EmotionReportRange = 7 | 30 | 90;
+type EmotionReportRange = 30 | 90 | 180;
 type EmotionReportGranularity = "week" | "month";
 
-const REPORT_RANGE_OPTIONS: EmotionReportRange[] = [7, 30, 90];
+const REPORT_RANGE_OPTIONS: EmotionReportRange[] = [30, 90, 180];
 const REPORT_GRANULARITY_OPTIONS: EmotionReportGranularity[] = ["week", "month"];
 
 const EmotionPage = observer(() => {
@@ -31,7 +31,7 @@ const EmotionPage = observer(() => {
   const dominantEmotionLabel =
     reportSummary.total === 0 ? t("message.no-data") : t(EMOTION_META[reportSummary.dominantEmotion].labelKey as any) || "";
   const averageScoreLabel = reportSummary.total === 0 ? "-" : reportSummary.averageScore.toFixed(2);
-  const reportWindowLabel = `${reportRange}D · ${t(`memo.range-${reportGranularity}` as any)}`;
+  const reportWindowLabel = `${t("memo.report-days", { count: reportRange })} · ${t(`memo.range-${reportGranularity}` as any)}`;
 
   if (!currentUser) {
     return null;
@@ -55,19 +55,15 @@ const EmotionPage = observer(() => {
                 <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-zinc-800 dark:text-zinc-300">
                   {reportWindowLabel}
                 </span>
-                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-zinc-800 dark:text-zinc-300">
-                  {t("memo.chart")}
-                </span>
               </div>
               <h1 className="mt-3 text-2xl font-semibold tracking-tight text-gray-900 dark:text-zinc-100 sm:text-3xl">{t("memo.chart")}</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-500 dark:text-gray-400">{t("memo.emotion-page-description")}</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[36rem]">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:min-w-[28rem]">
               <SummaryChip label={t("common.memos")} value={String(reportSummary.total)} />
               <SummaryChip label={t("memo.average-score")} value={averageScoreLabel} />
               <SummaryChip label={t("memo.dominant-emotion")} value={dominantEmotionLabel} />
-              <SummaryChip label={t("memo.chart")} value={reportWindowLabel} />
             </div>
           </div>
 
@@ -79,6 +75,7 @@ const EmotionPage = observer(() => {
                   <button
                     key={days}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => setReportRange(days)}
                     className={cn(
                       "flex-1 rounded-2xl px-4 py-2 text-sm font-medium transition-colors xl:flex-none",
@@ -87,7 +84,7 @@ const EmotionPage = observer(() => {
                         : "text-gray-500 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100",
                     )}
                   >
-                    {days}D
+                    {t("memo.report-days", { count: days })}
                   </button>
                 );
               })}
@@ -100,6 +97,7 @@ const EmotionPage = observer(() => {
                   <button
                     key={mode}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => setReportGranularity(mode)}
                     className={cn(
                       "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
@@ -116,15 +114,14 @@ const EmotionPage = observer(() => {
           </div>
         </section>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,0.9fr)] xl:items-start">
-          <main className="space-y-4">
+        <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,0.9fr)] xl:items-start">
+          <main className="min-w-0 space-y-4">
             <section className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <div className="border-b border-gray-200 px-5 py-4 dark:border-zinc-800 sm:px-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.24em] text-gray-500 dark:text-gray-400">{t("memo.chart")}</p>
                     <h2 className="mt-2 text-xl font-semibold tracking-tight text-gray-900 dark:text-zinc-100 sm:text-2xl">
-                      {t("memo.chart")}
+                      {t("memo.emotion-trend")}
                     </h2>
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -147,10 +144,10 @@ const EmotionPage = observer(() => {
             </section>
           </main>
 
-          <aside className="space-y-4">
+          <aside className="min-w-0 space-y-4">
             <section className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <div className="border-b border-gray-200 px-5 py-4 dark:border-zinc-800">
-                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">{t("memo.dominant-emotion")}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">{t("memo.emotion-distribution")}</p>
               </div>
               <div className="space-y-3 p-4">
                 {reportSummary.breakdown.map((item) => {
@@ -167,18 +164,6 @@ const EmotionPage = observer(() => {
                     />
                   );
                 })}
-              </div>
-            </section>
-
-            <section className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="border-b border-gray-200 px-5 py-4 dark:border-zinc-800">
-                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">报表摘要</p>
-              </div>
-              <div className="grid gap-2 p-4 sm:grid-cols-2 xl:grid-cols-1">
-                <SummaryChip label={t("common.memos")} value={String(reportSummary.total)} />
-                <SummaryChip label={t("memo.average-score")} value={averageScoreLabel} />
-                <SummaryChip label={t("memo.dominant-emotion")} value={dominantEmotionLabel} />
-                <SummaryChip label="区间" value={reportWindowLabel} />
               </div>
             </section>
           </aside>

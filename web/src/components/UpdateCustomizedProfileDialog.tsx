@@ -103,7 +103,7 @@ const UpdateCustomizedProfileDialog = ({ destroy }: Props) => {
           <XIcon className="w-5 h-auto" />
         </Button>
       </div>
-      <div className="flex flex-col justify-start items-start min-w-[16rem]">
+      <div className="flex flex-col justify-start items-start w-64 max-w-full min-w-0">
         <p className="text-sm mb-1">{t("setting.system-section.server-name")}</p>
         <Input className="w-full" type="text" value={customProfile.title} onChange={handleNameChanged} />
         <p className="text-sm mb-1 mt-2">{t("setting.system-section.customize-server.icon-url")}</p>

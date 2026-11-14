@@ -49,7 +49,7 @@ const RootLayout = observer(() => {
           <Navigation collapsed={true} />
         </div>
       )}
-      <main className="w-full h-auto flex-grow shrink flex flex-col justify-start items-center">
+      <main className="min-w-0 w-full h-auto flex-grow shrink flex flex-col justify-start items-center">
         <Suspense fallback={<Loading />}>
           <Outlet />
         </Suspense>

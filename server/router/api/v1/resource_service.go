@@ -158,7 +158,7 @@ func (s *APIV1Service) GetResourceBinary(ctx context.Context, request *v1pb.GetR
 	}
 
 	if request.Thumbnail && util.HasPrefixes(resource.Type, SupportedThumbnailMimeTypes...) {
-		thumbnailBlob, err := s.getOrGenerateThumbnail(resource)
+		thumbnailBlob, err := s.getOrGenerateThumbnail(ctx, resource)
 		if err != nil {
 			// thumbnail failures are logged as warnings and not cosidered critical failures as
 			// a resource image can be used in its place.
@@ -396,13 +396,13 @@ func (s *APIV1Service) GetResourceBlob(resource *store.Resource) ([]byte, error)
 }
 
 const (
-	// thumbnailRatio is the ratio of the thumbnail image.
-	thumbnailRatio = 0.8
+	// thumbnailMaxDimension bounds list previews independently of original image size.
+	thumbnailMaxDimension = 512
 )
 
 // getOrGenerateThumbnail returns the thumbnail image of the resource.
-func (s *APIV1Service) getOrGenerateThumbnail(resource *store.Resource) ([]byte, error) {
-	filePath, err := s.getOrGenerateThumbnailPath(resource)
+func (s *APIV1Service) getOrGenerateThumbnail(ctx context.Context, resource *store.Resource) ([]byte, error) {
+	filePath, err := s.getOrGenerateThumbnailPath(ctx, resource)
 	if err != nil {
 		return nil, err
 	}
@@ -414,12 +414,12 @@ func (s *APIV1Service) getOrGenerateThumbnail(resource *store.Resource) ([]byte,
 }
 
 // getOrGenerateThumbnailPath returns the thumbnail file path of the resource.
-func (s *APIV1Service) getOrGenerateThumbnailPath(resource *store.Resource) (string, error) {
+func (s *APIV1Service) getOrGenerateThumbnailPath(ctx context.Context, resource *store.Resource) (string, error) {
 	thumbnailCacheFolder := filepath.Join(s.Profile.Data, ThumbnailCacheFolder)
 	if err := os.MkdirAll(thumbnailCacheFolder, os.ModePerm); err != nil {
 		return "", fmt.Errorf("failed to create thumbnail cache folder: %w", err)
 	}
-	filePath := filepath.Join(thumbnailCacheFolder, fmt.Sprintf("%d%s", resource.ID, filepath.Ext(resource.Filename)))
+	filePath := filepath.Join(thumbnailCacheFolder, fmt.Sprintf("%d-v2%s", resource.ID, filepath.Ext(resource.Filename)))
 	if _, err := os.Stat(filePath); err == nil {
 		return filePath, nil
 	} else if !os.IsNotExist(err) {
@@ -444,6 +444,18 @@ func (s *APIV1Service) getOrGenerateThumbnailPath(resource *store.Resource) (str
 		}
 		img = decoded
 	} else {
+		// File requests initially fetch metadata only. Load database image bytes on
+		// a cache miss rather than silently falling back to the full-size image.
+		if resource.StorageType == storepb.ResourceStorageType_RESOURCE_STORAGE_TYPE_UNSPECIFIED && resource.Blob == nil {
+			stored, err := s.Store.GetResource(ctx, &store.FindResource{ID: &resource.ID, GetBlob: true})
+			if err != nil {
+				return "", fmt.Errorf("failed to read thumbnail source: %w", err)
+			}
+			if stored == nil {
+				return "", errors.New("thumbnail source not found")
+			}
+			resource = stored
+		}
 		blob, err := s.GetResourceBlob(resource)
 		if err != nil {
 			return "", fmt.Errorf("failed to get resource blob: %w", err)
@@ -455,11 +467,21 @@ func (s *APIV1Service) getOrGenerateThumbnailPath(resource *store.Resource) (str
 		img = decoded
 	}
 
-	thumbnailWidth := int(float64(img.Bounds().Dx()) * thumbnailRatio)
-	// Resize the image to the thumbnailWidth.
-	thumbnailImage := imaging.Resize(img, thumbnailWidth, 0, imaging.Lanczos)
-	if err := imaging.Save(thumbnailImage, filePath); err != nil {
+	thumbnailImage := imaging.Fit(img, thumbnailMaxDimension, thumbnailMaxDimension, imaging.Lanczos)
+	// Publish only complete images so concurrent readers cannot see a partial cache file.
+	temp, err := os.CreateTemp(thumbnailCacheFolder, "thumbnail-*"+filepath.Ext(resource.Filename))
+	if err != nil {
+		return "", fmt.Errorf("failed to create thumbnail file: %w", err)
+	}
+	defer os.Remove(temp.Name())
+	if err := temp.Close(); err != nil {
+		return "", err
+	}
+	if err := imaging.Save(thumbnailImage, temp.Name()); err != nil {
 		return "", fmt.Errorf("failed to save thumbnail file: %w", err)
+	}
+	if err := os.Rename(temp.Name(), filePath); err != nil {
+		return "", fmt.Errorf("failed to publish thumbnail file: %w", err)
 	}
 	return filePath, nil
 }

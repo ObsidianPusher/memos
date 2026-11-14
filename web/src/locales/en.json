@@ -152,7 +152,10 @@
     "clear-emotion-filter": "Clear filters",
     "any-emotion": "Has emotion",
     "dominant-emotion": "Dominant emotion",
-    "emotion-page-description": "Review emotion memos in a compact report that focuses on average score, dominant emotion, and the distribution across the latest 7, 30, or 90 days.",
+    "report-days": "{{count}} days",
+    "emotion-trend": "Emotion trend",
+    "emotion-distribution": "Emotion distribution",
+    "emotion-page-description": "Review emotion trends and distribution across the latest 30, 90, or 180 days, grouped by week or month.",
     "emotion": {
       "awesome": "Awesome",
       "bad": "Bad",

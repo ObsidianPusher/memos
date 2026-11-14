@@ -1,9 +1,11 @@
 package v1
 
 import (
+	"bytes"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/labstack/echo/v4"
@@ -40,7 +42,7 @@ func (s *APIV1Service) handleResourceFile(c echo.Context) error {
 	}
 
 	if c.QueryParam("thumbnail") == "true" && util.HasPrefixes(resource.Type, SupportedThumbnailMimeTypes...) {
-		if path, err := s.getOrGenerateThumbnailPath(resource); err == nil {
+		if path, err := s.getOrGenerateThumbnailPath(ctx, resource); err == nil {
 			return c.File(path)
 		}
 	}
@@ -77,6 +79,8 @@ func (s *APIV1Service) handleResourceFile(c echo.Context) error {
 			strings.EqualFold(contentType, "application/xhtml+xml") {
 			contentType = "application/octet-stream"
 		}
-		return c.Blob(http.StatusOK, contentType, resource.Blob)
+		c.Response().Header().Set(echo.HeaderContentType, contentType)
+		http.ServeContent(c.Response(), c.Request(), resource.Filename, time.Unix(resource.UpdatedTs, 0), bytes.NewReader(resource.Blob))
+		return nil
 	}
 }

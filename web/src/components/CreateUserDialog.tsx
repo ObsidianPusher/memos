@@ -70,7 +70,7 @@ const CreateUserDialog: React.FC<Props> = (props: Props) => {
           <XIcon className="w-5 h-auto" />
         </Button>
       </div>
-      <div className="flex flex-col justify-start items-start max-w-md min-w-72">
+      <div className="flex flex-col justify-start items-start w-72 max-w-full min-w-0">
         <div className="w-full flex flex-col justify-start items-start mb-3">
           <span className="text-sm whitespace-nowrap mb-1">{t("common.username")}</span>
           <Input

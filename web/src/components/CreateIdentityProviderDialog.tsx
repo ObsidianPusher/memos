@@ -249,7 +249,7 @@ const CreateIdentityProviderDialog: React.FC<Props> = (props: Props) => {
           <XIcon className="w-5 h-auto" />
         </Button>
       </div>
-      <div className="flex flex-col justify-start items-start w-80">
+      <div className="flex flex-col justify-start items-start w-80 max-w-full min-w-0">
         {isCreating && (
           <>
             <Typography className="!mb-1" level="body-md">

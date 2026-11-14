@@ -26,18 +26,6 @@ const EmotionChart = ({ points, range }: Props) => {
 
   return (
     <div className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="border-b border-gray-200 px-5 py-4 dark:border-zinc-800">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">{t("memo.chart")}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{rangeLabel}</p>
-          </div>
-          <div className="text-right text-xs text-gray-500 dark:text-gray-400">
-            {points.reduce((sum, point) => sum + point.count, 0)} {t("common.memos")}
-          </div>
-        </div>
-      </div>
-
       <div className="relative overflow-x-auto px-3 py-4 sm:px-5" onMouseLeave={() => setHoveredIndex(-1)}>
         {hoveredPoint && (
           <div className="pointer-events-none absolute left-5 top-5 z-10 w-[min(18rem,calc(100%-2.5rem))] rounded-2xl border border-gray-200 bg-white/95 px-3 py-2 text-sm shadow-lg backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">

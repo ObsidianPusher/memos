@@ -147,7 +147,10 @@
     "clear-emotion-filter": "清除筛选",
     "any-emotion": "含情绪",
     "dominant-emotion": "主导情绪",
-    "emotion-page-description": "基于最近 7、30、90 天的情绪 memo 生成报表，聚焦平均分、主导情绪和情绪分布，帮助你快速看出当前状态与变化趋势。",
+    "report-days": "{{count}} 天",
+    "emotion-trend": "情绪趋势",
+    "emotion-distribution": "情绪分布",
+    "emotion-page-description": "查看最近 30、90、180 天的情绪趋势与分布，支持按周或月汇总。",
     "emotion": {
       "awesome": "极好",
       "bad": "不好",

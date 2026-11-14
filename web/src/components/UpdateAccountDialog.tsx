@@ -146,7 +146,7 @@ const UpdateAccountDialog = ({ destroy }: Props) => {
           <XIcon className="w-5 h-auto" />
         </Button>
       </div>
-      <div className="flex flex-col justify-start items-start !w-64 space-y-2">
+      <div className="flex flex-col justify-start items-start w-64 max-w-full min-w-0 space-y-2">
         <div className="w-full flex flex-row justify-start items-center">
           <span className="text-sm mr-2">{t("common.avatar")}</span>
           <label className="relative cursor-pointer hover:opacity-80">

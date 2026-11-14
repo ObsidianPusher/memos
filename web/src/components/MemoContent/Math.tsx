@@ -34,10 +34,10 @@ const Math: React.FC<Props> = ({ content, block }: Props) => {
   }, []);
 
   if (!TeX) {
-    return <span className={cn("max-w-full", block ? "block w-full" : "inline text-sm")}>{content}</span>;
+    return <span className={cn("max-w-full", block ? "block w-full overflow-x-auto" : "inline text-sm")}>{content}</span>;
   }
 
-  return <TeX className={cn("max-w-full", block ? "w-full block" : "inline text-sm")} block={block} math={content} />;
+  return <TeX className={cn("max-w-full", block ? "w-full block overflow-x-auto" : "inline text-sm")} block={block} math={content} />;
 };
 
 export default Math;

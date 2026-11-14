@@ -94,9 +94,7 @@ const workspaceStore = (() => {
   };
 
   const getWorkspaceSettingByKey = (settingKey: WorkspaceSettingKey) => {
-    return (
-      state.settings.find((setting) => setting.name === `${workspaceSettingNamePrefix}${settingKey}`) || WorkspaceSetting.fromPartial({})
-    );
+    return state.settings.find((setting) => setting.name === `${workspaceSettingNamePrefix}${settingKey}`);
   };
 
   return {

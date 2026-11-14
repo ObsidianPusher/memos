@@ -59,7 +59,7 @@ const BaseDialog = observer((props: Props) => {
       )}
       onMouseDown={handleSpaceClicked}
     >
-      <div ref={dialogContainerRef} onMouseDown={(e) => e.stopPropagation()}>
+      <div className="min-w-0 max-w-full" ref={dialogContainerRef} onMouseDown={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
