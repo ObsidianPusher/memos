@@ -1,7 +1,7 @@
 import { Button } from "@usememos/mui";
 import copy from "copy-to-clipboard";
 import { CopyIcon, ExternalLinkIcon, PencilIcon, PlusIcon, TrashIcon, XIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { isValidUrl } from "@/helpers/utils";
 import { useTranslate } from "@/utils/i18n";
@@ -15,6 +15,7 @@ interface ClashVergeSubscription {
   source: string;
   content?: string;
   include: string;
+  proxy_group?: string;
   auto_update: boolean;
   update_interval_seconds: number;
   last_refresh_ts: number;
@@ -34,14 +35,12 @@ const SubscriptionFilterSection = () => {
   const [sourceType, setSourceType] = useState<"url" | "content">("url");
   const [subscriptionURL, setSubscriptionURL] = useState("");
   const [subscriptionContent, setSubscriptionContent] = useState("");
+  const [proxyGroup, setProxyGroup] = useState("");
   const [includeKeywords, setIncludeKeywords] = useState("");
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [updateIntervalMinutes, setUpdateIntervalMinutes] = useState(60);
 
-  const hasValidInput = useMemo(() => {
-    const hasSource = sourceType === "url" ? isValidUrl(subscriptionURL.trim()) : subscriptionContent.trim() !== "";
-    return hasSource && includeKeywords.trim() !== "";
-  }, [sourceType, subscriptionURL, subscriptionContent, includeKeywords]);
+  const hasValidInput = sourceType === "url" ? isValidUrl(subscriptionURL.trim()) : subscriptionContent.trim() !== "";
 
   useEffect(() => {
     fetchSubscriptionList();
@@ -72,6 +71,7 @@ const SubscriptionFilterSection = () => {
     setSourceType("url");
     setSubscriptionURL("");
     setSubscriptionContent("");
+    setProxyGroup("");
     setIncludeKeywords("");
     setAutoUpdate(true);
     setUpdateIntervalMinutes(60);
@@ -99,7 +99,8 @@ const SubscriptionFilterSection = () => {
             source_type: sourceType,
             source: sourceType === "url" ? subscriptionURL.trim() : "",
             content: sourceType === "content" ? subscriptionContent.trim() : "",
-            include: includeKeywords.trim(),
+            proxy_group: proxyGroup.trim(),
+            include: proxyGroup.trim() ? includeKeywords.trim() : "",
             auto_update: sourceType === "url" && autoUpdate,
             update_interval_seconds: sourceType === "url" && autoUpdate ? updateIntervalMinutes * 60 : 0,
           }),
@@ -156,6 +157,7 @@ const SubscriptionFilterSection = () => {
     setSourceType(subscription.source_type || "url");
     setSubscriptionURL(subscription.source);
     setSubscriptionContent(subscription.content || "");
+    setProxyGroup(subscription.proxy_group ?? "");
     setIncludeKeywords(subscription.include);
     setAutoUpdate(subscription.auto_update);
     setUpdateIntervalMinutes(Math.max(1, Math.floor((subscription.update_interval_seconds || 3600) / 60)));
@@ -219,11 +221,22 @@ const SubscriptionFilterSection = () => {
             </label>
           )}
 
-          <label className="col-span-1 sm:col-span-2 text-sm text-gray-700 dark:text-gray-400">
+          <label className="col-span-1 text-sm text-gray-700 dark:text-gray-400">
+            <span>{t("setting.subscription-filter-section.proxy-group")}</span>
+            <input
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-gray-200 dark:focus:border-blue-400 dark:focus:ring-zinc-700"
+              placeholder={t("setting.subscription-filter-section.proxy-group-placeholder")}
+              value={proxyGroup}
+              onChange={(event) => setProxyGroup(event.target.value)}
+            />
+          </label>
+
+          <label className="col-span-1 text-sm text-gray-700 dark:text-gray-400">
             <span>{t("setting.subscription-filter-section.include-keywords")}</span>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-gray-200 dark:focus:border-blue-400 dark:focus:ring-zinc-700"
               placeholder={t("setting.subscription-filter-section.include-keywords-placeholder")}
+              disabled={!proxyGroup.trim()}
               value={includeKeywords}
               onChange={(event) => setIncludeKeywords(event.target.value)}
             />
@@ -279,7 +292,7 @@ const SubscriptionFilterSection = () => {
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-gray-400">{t("common.title")}</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-gray-400">
-                  {t("setting.subscription-filter-section.include-keywords")}
+                  {t("setting.subscription-filter-section.filter")}
                 </th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-gray-400">
                   {t("setting.subscription-filter-section.generated-link")}
@@ -303,7 +316,11 @@ const SubscriptionFilterSection = () => {
               {subscriptionList.map((subscription) => (
                 <tr key={subscription.id}>
                   <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{subscription.name || "-"}</td>
-                  <td className="max-w-60 truncate px-3 py-2 text-sm text-gray-600 dark:text-gray-400">{subscription.include}</td>
+                  <td className="max-w-60 truncate px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
+                    {subscription.proxy_group && subscription.include
+                      ? `${subscription.proxy_group} · ${subscription.include}`
+                      : t("setting.subscription-filter-section.no-filter")}
+                  </td>
                   <td className="max-w-80 px-3 py-2 text-xs text-gray-600 dark:text-gray-400">
                     <div className="truncate font-mono">{subscription.public_url}</div>
                   </td>

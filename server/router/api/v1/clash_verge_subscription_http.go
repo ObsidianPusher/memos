@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/labstack/echo/v4"
 	"gopkg.in/yaml.v3"
@@ -22,6 +24,7 @@ import (
 )
 
 const (
+	defaultClashSubscriptionName   = "Clash Verge Subscription"
 	maxSubscriptionBytes           = 8 * 1024 * 1024
 	clashSubscriptionCacheDir      = "clash_verge_subscription_cache"
 	clashSubscriptionSourceURL     = "url"
@@ -59,13 +62,6 @@ func (s *APIV1Service) handleFilteredClashVergeSubscription(c echo.Context) erro
 			"error": "missing required query parameter: source",
 		})
 	}
-	keywords := parseIncludeKeywords(c.QueryParam("include"))
-	if len(keywords) == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "missing required query parameter: include",
-		})
-	}
-
 	sourceURL, err := validateSubscriptionSourceURL(ctx, source)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -80,22 +76,35 @@ func (s *APIV1Service) handleFilteredClashVergeSubscription(c echo.Context) erro
 		})
 	}
 
-	filteredContent, matchedCount, err := filterSubscriptionContent(payload, keywords)
+	filteredContent, err := prepareClashSubscriptionContent(payload, strings.TrimSpace(c.QueryParam("proxy_group")), c.QueryParam("include"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
 		})
 	}
-	if matchedCount == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "no node matched the include keywords in auto-select groups",
-		})
-	}
+	return writeClashSubscriptionConfig(c, c.QueryParam("name"), filteredContent)
+}
 
-	c.Response().Header().Set(echo.HeaderContentType, "text/yaml; charset=utf-8")
+func writeClashSubscriptionConfig(c echo.Context, name string, content []byte) error {
+	filename := strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || strings.ContainsRune(`<>:"/\|?*`, r) {
+			return '_'
+		}
+		return r
+	}, name))
+	filename = strings.Trim(filename, ". ")
+	if filename == "" {
+		filename = defaultClashSubscriptionName
+	}
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".yaml", ".yml":
+	default:
+		filename += ".yaml"
+	}
 	c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
-	c.Response().Header().Set(echo.HeaderContentDisposition, `inline; filename="clash-verge-filtered.yaml"`)
-	return c.Blob(http.StatusOK, "text/yaml; charset=utf-8", filteredContent)
+	c.Response().Header().Set("Referrer-Policy", "no-referrer")
+	c.Response().Header().Set(echo.HeaderContentDisposition, mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
+	return c.Blob(http.StatusOK, "text/yaml; charset=utf-8", content)
 }
 
 type upsertClashVergeSubscriptionRequest struct {
@@ -104,6 +113,7 @@ type upsertClashVergeSubscriptionRequest struct {
 	Source                string `json:"source"`
 	Content               string `json:"content"`
 	Include               string `json:"include"`
+	ProxyGroup            string `json:"proxy_group,omitempty"`
 	AutoUpdate            *bool  `json:"auto_update"`
 	UpdateIntervalSeconds *int64 `json:"update_interval_seconds"`
 }
@@ -115,6 +125,7 @@ type clashVergeSubscriptionResponse struct {
 	Source                string `json:"source"`
 	Content               string `json:"content,omitempty"`
 	Include               string `json:"include"`
+	ProxyGroup            string `json:"proxy_group,omitempty"`
 	AutoUpdate            bool   `json:"auto_update"`
 	UpdateIntervalSeconds int64  `json:"update_interval_seconds"`
 	LastRefreshTs         int64  `json:"last_refresh_ts"`
@@ -171,7 +182,7 @@ func (s *APIV1Service) createClashVergeSubscription(c echo.Context) error {
 		})
 	}
 
-	created, err := s.clashSubscriptionStore.Create(currentUser.ID, item.Name, item.SourceType, item.Source, item.Content, item.Include, *item.AutoUpdate, *item.UpdateIntervalSeconds)
+	created, err := s.clashSubscriptionStore.Create(currentUser.ID, item.Name, item.SourceType, item.Source, item.Content, item.Include, item.ProxyGroup, *item.AutoUpdate, *item.UpdateIntervalSeconds)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to create subscription",
@@ -218,7 +229,23 @@ func (s *APIV1Service) updateClashVergeSubscription(c echo.Context) error {
 		})
 	}
 
-	updated, err := s.clashSubscriptionStore.Update(id, currentUser.ID, item.Name, item.SourceType, item.Source, item.Content, item.Include, *item.AutoUpdate, *item.UpdateIntervalSeconds)
+	// Check ownership before fetching any replacement profile.
+	current, err := s.clashSubscriptionStore.Get(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to load subscription"})
+	}
+	if current == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "subscription not found"})
+	}
+	if current.UserID != currentUser.ID {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "permission denied"})
+	}
+	content, err := loadClashSubscriptionContent(ctx, item.SourceType, item.Source, item.Content, item.ProxyGroup, item.Include)
+	if err != nil {
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("failed to refresh subscription cache: %v", err)})
+	}
+
+	updated, err := s.clashSubscriptionStore.Update(id, currentUser.ID, item.Name, item.SourceType, item.Source, item.Content, item.Include, item.ProxyGroup, *item.AutoUpdate, *item.UpdateIntervalSeconds)
 	if err != nil {
 		if stderrors.Is(err, errClashSubscriptionPermissionDenied) {
 			return c.JSON(http.StatusForbidden, map[string]string{
@@ -234,7 +261,7 @@ func (s *APIV1Service) updateClashVergeSubscription(c echo.Context) error {
 			"error": "subscription not found",
 		})
 	}
-	if _, err := s.refreshClashSubscriptionCache(ctx, updated); err != nil {
+	if err := s.saveClashSubscriptionCache(updated.ID, content); err != nil {
 		_, _ = s.clashSubscriptionStore.UpdateRefreshState(updated.ID, 0, err.Error())
 		return c.JSON(http.StatusBadGateway, map[string]string{
 			"error": fmt.Sprintf("failed to refresh subscription cache: %v", err),
@@ -320,10 +347,7 @@ func (s *APIV1Service) getClashVergeSubscriptionConfig(c echo.Context) error {
 			"error": "subscription cache is empty",
 		})
 	}
-	c.Response().Header().Set(echo.HeaderContentType, "text/yaml; charset=utf-8")
-	c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
-	c.Response().Header().Set(echo.HeaderContentDisposition, `inline; filename="clash-verge-filtered.yaml"`)
-	return c.Blob(http.StatusOK, "text/yaml; charset=utf-8", cachedContent)
+	return writeClashSubscriptionConfig(c, item.Name, cachedContent)
 }
 
 func (s *APIV1Service) validateAndNormalizeClashVergeSubscriptionInput(ctx context.Context, request *upsertClashVergeSubscriptionRequest) (*upsertClashVergeSubscriptionRequest, error) {
@@ -362,12 +386,9 @@ func (s *APIV1Service) validateAndNormalizeClashVergeSubscriptionInput(ctx conte
 		source = ""
 	}
 	include := strings.TrimSpace(request.Include)
-	if len(parseIncludeKeywords(include)) == 0 {
-		return nil, fmt.Errorf("missing required field: include")
-	}
 	name := strings.TrimSpace(request.Name)
 	if name == "" {
-		name = "Clash Verge Subscription"
+		name = defaultClashSubscriptionName
 	}
 	if len(name) > 120 {
 		return nil, fmt.Errorf("name is too long")
@@ -399,6 +420,7 @@ func (s *APIV1Service) validateAndNormalizeClashVergeSubscriptionInput(ctx conte
 		Source:                source,
 		Content:               content,
 		Include:               include,
+		ProxyGroup:            strings.TrimSpace(request.ProxyGroup),
 		AutoUpdate:            &autoUpdate,
 		UpdateIntervalSeconds: &intervalSeconds,
 	}, nil
@@ -426,6 +448,7 @@ func convertClashVergeSubscriptionToResponse(c echo.Context, item *ClashVergeSub
 		Source:                item.Source,
 		Content:               item.Content,
 		Include:               item.Include,
+		ProxyGroup:            item.ProxyGroup,
 		AutoUpdate:            item.AutoUpdate,
 		UpdateIntervalSeconds: item.UpdateIntervalSeconds,
 		LastRefreshTs:         item.LastRefreshTs,
@@ -476,32 +499,37 @@ func (s *APIV1Service) refreshClashSubscriptionCache(ctx context.Context, item *
 	if item == nil {
 		return nil, fmt.Errorf("subscription is nil")
 	}
-	keywords := parseIncludeKeywords(item.Include)
-	if len(keywords) == 0 {
-		return nil, fmt.Errorf("subscription include keywords are empty")
-	}
-	var payload []byte
-	if item.SourceType == clashSubscriptionSourceContent {
-		payload = []byte(item.Content)
-	} else {
-		sourceURL, err := validateSubscriptionSourceURL(ctx, item.Source)
-		if err != nil {
-			return nil, err
-		}
-		payload, err = fetchSubscriptionContent(ctx, sourceURL.String())
-		if err != nil {
-			return nil, err
-		}
-	}
-	filteredContent, _, err := filterSubscriptionContent(payload, keywords)
+	content, err := loadClashSubscriptionContent(ctx, item.SourceType, item.Source, item.Content, item.ProxyGroup, item.Include)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.writeClashSubscriptionCache(item.ID, filteredContent); err != nil {
+	if err := s.saveClashSubscriptionCache(item.ID, content); err != nil {
 		return nil, err
 	}
-	_, _ = s.clashSubscriptionStore.UpdateRefreshState(item.ID, time.Now().Unix(), "")
-	return filteredContent, nil
+	return content, nil
+}
+
+func loadClashSubscriptionContent(ctx context.Context, sourceType, source, content string, proxyGroup string, include string) ([]byte, error) {
+	if sourceType == clashSubscriptionSourceContent {
+		return prepareClashSubscriptionContent([]byte(content), proxyGroup, include)
+	}
+	sourceURL, err := validateSubscriptionSourceURL(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := fetchSubscriptionContent(ctx, sourceURL.String())
+	if err != nil {
+		return nil, err
+	}
+	return prepareClashSubscriptionContent(payload, proxyGroup, include)
+}
+
+func (s *APIV1Service) saveClashSubscriptionCache(id string, content []byte) error {
+	if err := s.writeClashSubscriptionCache(id, content); err != nil {
+		return err
+	}
+	_, _ = s.clashSubscriptionStore.UpdateRefreshState(id, time.Now().Unix(), "")
+	return nil
 }
 
 func (s *APIV1Service) getClashSubscriptionCachePath(id string) string {
@@ -667,7 +695,25 @@ func fetchSubscriptionContent(ctx context.Context, sourceURL string) ([]byte, er
 	return payload, nil
 }
 
-func filterAutoSelectNodes(payload []byte, includeKeywords []string) ([]byte, int, error) {
+func prepareClashSubscriptionContent(payload []byte, proxyGroup string, include string) ([]byte, error) {
+	keywords := parseIncludeKeywords(include)
+	if len(keywords) == 0 || proxyGroup == "" {
+		var root map[string]any
+		if err := yaml.Unmarshal(payload, &root); err != nil {
+			return nil, fmt.Errorf("failed to parse subscription YAML: %w", err)
+		}
+		_, hasProxies := root["proxies"].([]any)
+		_, hasProviders := root["proxy-providers"].(map[string]any)
+		if !hasProxies && !hasProviders {
+			return nil, fmt.Errorf("invalid subscription: missing proxies or proxy-providers")
+		}
+		return payload, nil
+	}
+	filtered, _, err := filterSubscriptionContent(payload, keywords, proxyGroup)
+	return filtered, err
+}
+
+func filterSubscriptionContent(payload []byte, includeKeywords []string, groupNames string) ([]byte, int, error) {
 	root := map[string]any{}
 	if err := yaml.Unmarshal(payload, &root); err != nil {
 		return nil, 0, fmt.Errorf("failed to parse subscription YAML: %w", err)
@@ -679,29 +725,54 @@ func filterAutoSelectNodes(payload []byte, includeKeywords []string) ([]byte, in
 		return nil, 0, fmt.Errorf("invalid subscription: missing proxy-groups")
 	}
 
-	autoGroupCount := 0
-	totalMatched := 0
+	policyNames := getProxyNameSet(proxyGroups)
+	groupsByName := make(map[string]map[string]any, len(policyNames))
 	for _, proxyGroupRaw := range proxyGroups {
 		proxyGroup, ok := proxyGroupRaw.(map[string]any)
-		if !ok || !isAutoSelectGroup(proxyGroup) {
+		if !ok {
 			continue
 		}
-		autoGroupCount++
+		name, _ := proxyGroup["name"].(string)
+		groupsByName[name] = proxyGroup
+	}
+	for _, name := range []string{"DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"} {
+		policyNames[name] = struct{}{}
+	}
 
-		filteredProxies, matched := filterProxyNameList(proxyGroup["proxies"], proxyNames, includeKeywords)
-		if filteredProxies == nil {
+	requestedGroups := []string{groupNames}
+	if _, exactMatch := groupsByName[groupNames]; !exactMatch {
+		requestedGroups = strings.FieldsFunc(groupNames, func(r rune) bool {
+			return r == ',' || r == '，' || r == '\n'
+		})
+	}
+	filteredGroups := make(map[string]struct{}, len(requestedGroups))
+	totalMatched := 0
+	for _, groupName := range requestedGroups {
+		groupName = strings.TrimSpace(groupName)
+		if groupName == "" {
 			continue
+		}
+		if _, alreadyFiltered := filteredGroups[groupName]; alreadyFiltered {
+			continue
+		}
+		proxyGroup, ok := groupsByName[groupName]
+		if !ok {
+			return nil, 0, fmt.Errorf("proxy group %q was not found", groupName)
+		}
+		filteredProxies, matched, hasNodes := filterProxyNameList(proxyGroup["proxies"], proxyNames, policyNames, includeKeywords)
+		if matched == 0 && hasNodes {
+			return nil, 0, fmt.Errorf("no node in proxy group %q matched include keywords", groupName)
+		}
+		if len(filteredProxies) == 0 {
+			return nil, 0, fmt.Errorf("proxy group %q has no usable members after filtering", groupName)
 		}
 		proxyGroup["proxies"] = filteredProxies
+		filteredGroups[groupName] = struct{}{}
 		totalMatched += matched
 	}
-	if autoGroupCount == 0 {
-		return nil, 0, fmt.Errorf("no auto-select proxy group was found")
+	if len(filteredGroups) == 0 {
+		return nil, 0, fmt.Errorf("no proxy group name was provided")
 	}
-	if totalMatched == 0 {
-		return nil, 0, fmt.Errorf("no node matched include keywords")
-	}
-
 	output, err := yaml.Marshal(root)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to marshal filtered subscription: %w", err)
@@ -709,38 +780,38 @@ func filterAutoSelectNodes(payload []byte, includeKeywords []string) ([]byte, in
 	return output, totalMatched, nil
 }
 
-func filterSubscriptionContent(payload []byte, includeKeywords []string) ([]byte, int, error) {
-	return filterAutoSelectNodes(payload, includeKeywords)
-}
-
-func filterProxyNameList(raw any, proxyNameSet map[string]struct{}, includeKeywords []string) ([]string, int) {
+func filterProxyNameList(raw any, proxyNameSet, policyNames map[string]struct{}, includeKeywords []string) ([]string, int, bool) {
 	proxyList, ok := raw.([]any)
 	if !ok {
-		return nil, 0
+		return nil, 0, false
 	}
 
 	filtered := make([]string, 0, len(proxyList))
 	filteredSet := make(map[string]struct{})
 	matched := 0
+	hasNodes := false
 	for _, proxyItem := range proxyList {
 		proxyName, ok := proxyItem.(string)
-		if !ok {
-			continue
-		}
-		if _, exists := proxyNameSet[proxyName]; !exists {
-			continue
-		}
-		if !matchesIncludeKeywords(proxyName, includeKeywords) {
+		if !ok || proxyName == "DIRECT" {
 			continue
 		}
 		if _, exists := filteredSet[proxyName]; exists {
 			continue
 		}
-		matched++
+		if _, exists := policyNames[proxyName]; !exists {
+			if _, exists := proxyNameSet[proxyName]; !exists {
+				continue
+			}
+			hasNodes = true
+			if !matchesIncludeKeywords(proxyName, includeKeywords) {
+				continue
+			}
+			matched++
+		}
 		filteredSet[proxyName] = struct{}{}
 		filtered = append(filtered, proxyName)
 	}
-	return filtered, matched
+	return filtered, matched, hasNodes
 }
 
 func getProxyNameSet(raw any) map[string]struct{} {
@@ -761,20 +832,6 @@ func getProxyNameSet(raw any) map[string]struct{} {
 		nameSet[name] = struct{}{}
 	}
 	return nameSet
-}
-
-func isAutoSelectGroup(proxyGroup map[string]any) bool {
-	groupType, _ := proxyGroup["type"].(string)
-	switch strings.ToLower(strings.TrimSpace(groupType)) {
-	case "url-test", "fallback", "load-balance":
-		return true
-	}
-
-	groupName, _ := proxyGroup["name"].(string)
-	normalizedName := strings.ToLower(strings.TrimSpace(groupName))
-	return strings.Contains(normalizedName, "自动选择") ||
-		strings.Contains(normalizedName, "自动测速") ||
-		strings.Contains(normalizedName, "auto")
 }
 
 func matchesIncludeKeywords(proxyName string, includeKeywords []string) bool {

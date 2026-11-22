@@ -3,6 +3,7 @@ import React, { Profiler } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import StorageSection from "@/components/Settings/StorageSection";
+import SubscriptionFilterSection from "@/components/Settings/SubscriptionFilterSection";
 import WorkspaceSection from "@/components/Settings/WorkspaceSection";
 import i18n from "@/i18n";
 import en from "@/locales/en.json";
@@ -24,7 +25,10 @@ beforeEach(async () => {
   workspaceStore.state.setPartial({ settings: [] });
   await i18n.init({ lng: "en", resources: { en: { translation: en } }, fallbackLng: "en" });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function renderSettings(component: React.ReactNode) {
   let commits = 0;
@@ -78,4 +82,24 @@ it("loads arriving storage settings and retains edits through unrelated store up
   fireEvent.change(path, { target: { value: "edited/{filename}" } });
   act(() => workspaceStore.state.setPartial({ fontSize: 18 }));
   expect((path as HTMLInputElement).value).toBe("edited/{filename}");
+});
+
+it.each(["", "Work nodes, Backup nodes"])("saves a subscription with proxy group %j", async (proxyGroup) => {
+  const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ subscriptions: [] })));
+  vi.stubGlobal("fetch", fetchMock);
+  renderSettings(<SubscriptionFilterSection />);
+  await screen.findByText("No subscription rules found.");
+
+  fireEvent.change(screen.getByLabelText("Subscription URL"), { target: { value: "https://example.com/config.yaml" } });
+  if (proxyGroup) {
+    fireEvent.change(screen.getByLabelText("Proxy groups (optional)"), { target: { value: proxyGroup } });
+    fireEvent.change(screen.getByLabelText("Include keywords"), { target: { value: "HK" } });
+  }
+  fireEvent.click(screen.getByRole("button", { name: /create/i }));
+
+  await waitFor(() => {
+    const post = fetchMock.mock.calls.find(([, options]) => options.method === "POST");
+    expect(post).toBeDefined();
+    expect(JSON.parse(post?.[1].body)).toMatchObject({ proxy_group: proxyGroup, include: proxyGroup ? "HK" : "" });
+  });
 });

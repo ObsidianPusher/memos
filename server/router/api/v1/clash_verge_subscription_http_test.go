@@ -2,12 +2,21 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/labstack/echo/v4"
+	"github.com/usememos/memos/internal/profile"
+	"gopkg.in/yaml.v3"
 )
 
 func TestDecodeStrictJSONBodyRejectsUnknownFields(t *testing.T) {
@@ -43,7 +52,7 @@ rules:
   - MATCH,自动选择
 `)
 
-	filtered, matched, err := filterSubscriptionContent(payload, []string{"香港"})
+	filtered, matched, err := filterSubscriptionContent(payload, []string{"香港"}, "自动选择")
 	if err != nil {
 		t.Fatalf("filter subscription content: %v", err)
 	}
@@ -59,6 +68,119 @@ rules:
 	if !strings.Contains(string(filtered), "- 香港 01") || strings.Contains(string(filtered), "- Japan 01\nrules:") {
 		t.Fatalf("unexpected auto proxy group: %q", filtered)
 	}
+}
+
+func TestClashSubscriptionFilterRejectsEmptyGroupAfterRemovingDirect(t *testing.T) {
+	const payload = `proxies: []
+proxy-groups:
+- name: "选择出口"
+  type: "select"
+  proxies:
+    - DIRECT
+rules:
+- MATCH,选择出口
+`
+	if _, err := prepareClashSubscriptionContent([]byte(payload), "选择出口", "HK"); err == nil {
+		t.Fatal("expected an error when removing DIRECT leaves the group empty")
+	}
+}
+
+func TestClashSubscriptionFilterRejectsNoMatchingNodes(t *testing.T) {
+	const payload = `proxies:
+- name: JP
+proxy-groups:
+- name: 选择出口
+  type: select
+  proxies: [JP, DIRECT]
+`
+	if _, err := prepareClashSubscriptionContent([]byte(payload), "选择出口", "HK"); err == nil {
+		t.Fatal("expected unmatched nodes to be reported even when DIRECT is present")
+	}
+}
+
+func TestPublicClashSubscriptionGroupFilterAndFilename(t *testing.T) {
+	const payload = `# Original profile
+proxies:
+  - name: HK
+  - name: JP
+proxy-groups:
+  - name: 备用节点
+    type: select
+    proxies: [HK, JP]
+  - name: 工作节点
+    type: select
+    proxies: [HK, JP, DIRECT, 备用节点]
+rules: [ 'GEOIP,CN,DIRECT', 'MATCH,工作节点' ]
+`
+	for _, tt := range []struct {
+		name                 string
+		group                *string
+		include              string
+		wantBackup, wantWork []string
+	}{
+		{name: "named group", group: stringPointer("工作节点"), include: "HK", wantBackup: []string{"HK", "JP"}, wantWork: []string{"HK", "备用节点"}},
+		{name: "multiple named groups", group: stringPointer("工作节点， 备用节点"), include: "HK", wantBackup: []string{"HK"}, wantWork: []string{"HK", "备用节点"}},
+		{name: "blank group", group: stringPointer(""), include: "HK"},
+		{name: "blank keywords", group: stringPointer("工作节点")},
+		{name: "missing group field skips filtering even with old keywords", include: "HK"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			storePath := filepath.Join(dir, "subscriptions.json")
+			record := map[string]any{
+				"id": "test", "name": "我的订阅", "source_type": "content", "content": payload, "include": tt.include,
+			}
+			if tt.group != nil {
+				record["proxy_group"] = *tt.group
+			}
+			records, err := json.Marshal([]map[string]any{record})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(storePath, records, 0600); err != nil {
+				t.Fatal(err)
+			}
+			service := &APIV1Service{Profile: &profile.Profile{Data: dir}, clashSubscriptionStore: newClashVergeSubscriptionStore(storePath)}
+			rec := httptest.NewRecorder()
+			c := echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), rec)
+			c.SetParamNames("id")
+			c.SetParamValues("test")
+			if err := service.getClashVergeSubscriptionConfig(c); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+			}
+			if tt.wantBackup == nil {
+				if rec.Body.String() != payload {
+					t.Fatalf("unfiltered profile was changed: %s", rec.Body)
+				}
+			} else {
+				var config struct {
+					Groups []struct{ Proxies []string } `yaml:"proxy-groups"`
+					Rules  []string
+				}
+				if err := yaml.Unmarshal(rec.Body.Bytes(), &config); err != nil {
+					t.Fatal(err)
+				}
+				if len(config.Groups) != 2 || !reflect.DeepEqual(config.Groups[0].Proxies, tt.wantBackup) ||
+					!reflect.DeepEqual(config.Groups[1].Proxies, tt.wantWork) || !reflect.DeepEqual(config.Rules, []string{"GEOIP,CN,DIRECT", "MATCH,工作节点"}) {
+					t.Fatalf("unexpected config: %s", rec.Body)
+				}
+			}
+			_, params, err := mime.ParseMediaType(rec.Header().Get(echo.HeaderContentDisposition))
+			if err != nil || params["filename"] != "我的订阅.yaml" {
+				t.Fatalf("unexpected filename: %v (%v)", params, err)
+			}
+			if got := rec.Header().Get(echo.HeaderCacheControl); got != "no-store" {
+				t.Fatalf("Cache-Control = %q", got)
+			}
+		})
+	}
+}
+
+func stringPointer(value string) *string {
+	return &value
 }
 
 func TestValidateClashYAMLContentRejectsNonYAMLImports(t *testing.T) {
@@ -77,7 +199,6 @@ func TestContentSubscriptionForcesStaticUpdatePolicy(t *testing.T) {
 		Name:                  "Static nodes",
 		SourceType:            clashSubscriptionSourceContent,
 		Content:               "proxies: []\nproxy-groups: []\nrules: []\n",
-		Include:               "HK",
 		AutoUpdate:            &autoUpdate,
 		UpdateIntervalSeconds: &interval,
 	}

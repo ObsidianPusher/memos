@@ -313,7 +313,7 @@ Authorization: Bearer <access_token>
 
 ### 6.2 Clash Verge 订阅
 
-- `GET /api/v1/clash-verge/subscription?source=...&include=...`
+- `GET /api/v1/clash-verge/subscription?source=...&proxy_group=...&include=...&name=...`
 - `GET /api/v1/clash-verge/subscriptions`
 - `POST /api/v1/clash-verge/subscriptions`
 - `PATCH /api/v1/clash-verge/subscriptions/{id}`
@@ -322,8 +322,11 @@ Authorization: Bearer <access_token>
 
 说明：
 - 这组接口返回 YAML 或 JSON。
-- 其中 `source` 与 `include` 是核心参数。
+- 直接转发接口要求 `source`。保存或更新订阅时，`proxy_group` 填写 YAML 中 `proxy-groups` 的完整组名，多个组名用逗号分隔。`include` 分别匹配各指定组引用的节点名。任一字段省略或留空时，原样返回 YAML。
+- 启用过滤时会移除指定组成员列表中的 `DIRECT`，保留路由规则中的 `DIRECT`。组内存在代理节点时，关键字至少要匹配其中一个节点。过滤后没有可用成员时返回错误。
+- `name` 是订阅标题。返回 YAML 时，`Content-Disposition` 使用该标题生成文件名，并支持中文。
 - 管理接口按当前用户隔离；`GET /api/v1/clash-verge/subscriptions/{id}/config` 不要求登录，持有规则 URL 即可读取。
+- 远程配置使用原生 Clash YAML。对外使用 HTTPS 时，配置内容在传输中加密。
 - 自动更新由读取配置时触发；刷新失败且有旧缓存时返回旧内容，并附带 `X-Memos-Subscription-Stale: true`。
 
 ### 6.3 情绪报告

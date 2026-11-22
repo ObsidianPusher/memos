@@ -29,6 +29,7 @@ type ClashVergeSubscription struct {
 	Source                string `json:"source"`
 	Content               string `json:"content,omitempty"`
 	Include               string `json:"include"`
+	ProxyGroup            string `json:"proxy_group,omitempty"`
 	AutoUpdate            bool   `json:"auto_update"`
 	UpdateIntervalSeconds int64  `json:"update_interval_seconds"`
 	LastRefreshTs         int64  `json:"last_refresh_ts"`
@@ -103,7 +104,7 @@ func (s *clashVergeSubscriptionStore) Get(id string) (*ClashVergeSubscription, e
 	return cloneClashVergeSubscription(item), nil
 }
 
-func (s *clashVergeSubscriptionStore) Create(userID int32, name, sourceType, source, content, include string, autoUpdate bool, intervalSeconds int64) (*ClashVergeSubscription, error) {
+func (s *clashVergeSubscriptionStore) Create(userID int32, name, sourceType, source, content, include, proxyGroup string, autoUpdate bool, intervalSeconds int64) (*ClashVergeSubscription, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureLoadedLocked(); err != nil {
@@ -119,6 +120,7 @@ func (s *clashVergeSubscriptionStore) Create(userID int32, name, sourceType, sou
 		Source:                source,
 		Content:               content,
 		Include:               include,
+		ProxyGroup:            proxyGroup,
 		AutoUpdate:            autoUpdate,
 		UpdateIntervalSeconds: normalizeUpdateInterval(autoUpdate, intervalSeconds),
 		CreatedTs:             now,
@@ -131,7 +133,7 @@ func (s *clashVergeSubscriptionStore) Create(userID int32, name, sourceType, sou
 	return cloneClashVergeSubscription(item), nil
 }
 
-func (s *clashVergeSubscriptionStore) Update(id string, userID int32, name, sourceType, source, content, include string, autoUpdate bool, intervalSeconds int64) (*ClashVergeSubscription, error) {
+func (s *clashVergeSubscriptionStore) Update(id string, userID int32, name, sourceType, source, content, include, proxyGroup string, autoUpdate bool, intervalSeconds int64) (*ClashVergeSubscription, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureLoadedLocked(); err != nil {
@@ -150,6 +152,7 @@ func (s *clashVergeSubscriptionStore) Update(id string, userID int32, name, sour
 	item.Source = source
 	item.Content = content
 	item.Include = include
+	item.ProxyGroup = proxyGroup
 	item.AutoUpdate = autoUpdate
 	item.UpdateIntervalSeconds = normalizeUpdateInterval(autoUpdate, intervalSeconds)
 	item.UpdatedTs = time.Now().Unix()
